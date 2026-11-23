@@ -4,7 +4,7 @@ Los cambios de cada versión de Nudge. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones,
 [Semantic Versioning](https://semver.org/lang/es/).
 
-## [1.0.0] - sin publicar
+## [1.0.0] - 2026-11-23
 
 La 1.0 cifra todo el tráfico, exige el token también para el portapapeles y
 cambia el id de la app de Android. No es compatible con la 0.1.0: leé

@@ -126,7 +126,15 @@ func runServer() {
 
 	// Windows only: a notification-area icon (status and paired phones) that
 	// also announces new requests; a no-op elsewhere. Failure keeps serving.
-	tray := startTray(port, pairer, log.Printf)
+	// "Salir de Nudge" in the tray menu shuts the server down like a signal.
+	quit := make(chan struct{}, 1)
+	requestQuit := func() {
+		select {
+		case quit <- struct{}{}:
+		default:
+		}
+	}
+	tray := startTray(port, pairer, log.Printf, requestQuit)
 	defer tray.Close()
 
 	// Linux: best-effort notify-send. Windows: an in-process Yes/No dialog
@@ -156,6 +164,8 @@ func runServer() {
 		log.Printf("server failed: %v", err)
 	case <-sig:
 		log.Println("shutting down...")
+	case <-quit:
+		log.Println("shutting down (quit from the tray)...")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

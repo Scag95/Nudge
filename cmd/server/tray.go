@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf16"
@@ -53,6 +54,10 @@ type trayMenu struct {
 	Status string
 	Code   string
 	Phones []string
+	// PhoneIDs holds the device ID of each real phone row, in the same
+	// order as the first len(PhoneIDs) entries of Phones. Informational rows
+	// ("Ningún teléfono emparejado", "y N más") have no ID.
+	PhoneIDs []string
 }
 
 // trayMenuModel builds the menu from the current approved devices, ordered
@@ -97,11 +102,38 @@ func trayMenuModel(port, code string, devices []pair.DeviceInfo) trayMenu {
 	}
 	for _, r := range shown {
 		menu.Phones = append(menu.Phones, r.name+" — "+r.ip)
+		menu.PhoneIDs = append(menu.PhoneIDs, r.id)
 	}
 	if extra := len(rows) - len(shown); extra > 0 {
 		menu.Phones = append(menu.Phones, fmt.Sprintf("y %d más", extra))
 	}
 	return menu
+}
+
+// trayRevokeConfirm is the Yes/No question shown before revoking a phone
+// from the tray menu. name comes from the LAN and is sanitized.
+func trayRevokeConfirm(name string) (title, text string) {
+	name = sanitizeDialogField(name, maxDialogName)
+	if name == "" {
+		name = trayNoName
+	}
+	return "Revocar teléfono", name + " va a perder el acceso a esta PC y tendrá que volver a pedir emparejarse.\n\n¿Revocarlo?"
+}
+
+// trayDeviceName finds the current name of an approved device by ID.
+func trayDeviceName(devices []pair.DeviceInfo, id string) (string, bool) {
+	for _, d := range devices {
+		if d.ID == id {
+			return d.Name, true
+		}
+	}
+	return "", false
+}
+
+// autostartLinkPath is the shortcut that toggle-autostart.ps1 creates in the
+// user's Startup folder; its presence means autostart is on.
+func autostartLinkPath(startupDir string) string {
+	return filepath.Join(startupDir, "Nudge.lnk")
 }
 
 // trayMenuLabel escapes "&" so Win32 menus do not treat it as a mnemonic.

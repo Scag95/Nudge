@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -177,5 +178,59 @@ func TestCopyUTF16TruncatesWithoutSplittingSurrogates(t *testing.T) {
 	copyUTF16(dst, "hé")
 	if dst[0] != 'h' || dst[1] != 'é' || dst[2] != 0 {
 		t.Fatalf("dst = %v", dst)
+	}
+}
+
+func TestTrayMenuPhoneIDsFollowSortedRows(t *testing.T) {
+	devices := []pair.DeviceInfo{
+		{ID: "a", Name: "pixel", IP: "192.168.1.20"},
+		{ID: "b", Name: "Galaxy", IP: "192.168.1.30"},
+	}
+	got := trayMenuModel("8765", "", devices)
+	if want := []string{"b", "a"}; !reflect.DeepEqual(got.PhoneIDs, want) {
+		t.Fatalf("PhoneIDs = %q, want %q", got.PhoneIDs, want)
+	}
+}
+
+func TestTrayMenuPhoneIDsSkipInformationalRows(t *testing.T) {
+	if got := trayMenuModel("8765", "", nil).PhoneIDs; len(got) != 0 {
+		t.Fatalf("empty state PhoneIDs = %q, want none", got)
+	}
+	var devices []pair.DeviceInfo
+	for i := 0; i < maxTrayPhones+3; i++ {
+		devices = append(devices, pair.DeviceInfo{ID: fmt.Sprintf("id%02d", i), Name: fmt.Sprintf("p%02d", i)})
+	}
+	got := trayMenuModel("8765", "", devices)
+	if len(got.PhoneIDs) != maxTrayPhones || len(got.Phones) != maxTrayPhones+1 {
+		t.Fatalf("PhoneIDs %d, Phones %d; want %d ids and a final 'y N más' row", len(got.PhoneIDs), len(got.Phones), maxTrayPhones)
+	}
+}
+
+func TestTrayRevokeConfirmNamesThePhone(t *testing.T) {
+	title, text := trayRevokeConfirm("Pixel\u202e 8")
+	if title != "Revocar teléfono" {
+		t.Fatalf("title = %q", title)
+	}
+	if !strings.Contains(text, "Pixel 8") || strings.ContainsRune(text, '\u202e') {
+		t.Fatalf("text = %q, want the sanitized name", text)
+	}
+	if _, text := trayRevokeConfirm(""); !strings.Contains(text, trayNoName) {
+		t.Fatalf("empty name text = %q, want %q", text, trayNoName)
+	}
+}
+
+func TestTrayFindDeviceName(t *testing.T) {
+	devices := []pair.DeviceInfo{{ID: "a", Name: "pixel"}, {ID: "b", Name: "galaxy"}}
+	if name, ok := trayDeviceName(devices, "b"); !ok || name != "galaxy" {
+		t.Fatalf("trayDeviceName(b) = %q, %v", name, ok)
+	}
+	if _, ok := trayDeviceName(devices, "zzz"); ok {
+		t.Fatal("unknown id found")
+	}
+}
+
+func TestAutostartLinkPath(t *testing.T) {
+	if got := autostartLinkPath(`C:\Startup`); got != `C:\Startup`+string(filepath.Separator)+"Nudge.lnk" {
+		t.Fatalf("autostartLinkPath = %q", got)
 	}
 }

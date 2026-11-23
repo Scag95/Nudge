@@ -70,14 +70,23 @@ const (
 	niifInfo    = 0x01
 	nfiVersion4 = 4
 
-	imageIcon       = 1
-	lrDefaultColor  = 0
-	idiApplication  = 32512
-	smCxSmIcon      = 49
-	smCySmIcon      = 50
-	mfString        = 0x0000
-	mfGrayed        = 0x0001
-	mfSeparator     = 0x0800
+	imageIcon      = 1
+	lrDefaultColor = 0
+	idiApplication = 32512
+	smCxSmIcon     = 49
+	smCySmIcon     = 50
+	mfString       = 0x0000
+	mfGrayed       = 0x0001
+	mfSeparator    = 0x0800
+	mfChecked      = 0x0008
+	mfPopup        = 0x0010
+
+	// Tray menu command IDs (0 means "no command").
+	cmdCopyCode     = 1
+	cmdAutostart    = 2
+	cmdOpenLog      = 3
+	cmdQuit         = 4
+	cmdRevokeBase   = 100
 	tpmRightButton  = 0x0002
 	tpmReturnCmd    = 0x0100
 	tpmNoNotify     = 0x0080
@@ -135,6 +144,7 @@ type winTray struct {
 	port   string
 	broker *pair.Broker
 	logf   func(string, ...any)
+	quit   func() // asks runServer to shut down; must not block
 
 	hwnd        atomic.Uintptr
 	done        chan struct{}
@@ -157,8 +167,8 @@ var (
 
 // startTray creates the tray icon for the server. Failure is logged and the
 // server keeps running without it.
-func startTray(port string, b *pair.Broker, logf func(string, ...any)) trayHandle {
-	t := &winTray{port: port, broker: b, logf: logf, done: make(chan struct{})}
+func startTray(port string, b *pair.Broker, logf func(string, ...any), quit func()) trayHandle {
+	t := &winTray{port: port, broker: b, logf: logf, quit: quit, done: make(chan struct{})}
 	ready := make(chan bool, 1)
 	go t.run(ready)
 	if !<-ready {
@@ -320,39 +330,90 @@ func (t *winTray) showNotices() {
 	}
 }
 
+func appendMenuItem(menu, flags, id uintptr, text string) {
+	var ptr *uint16
+	if text != "" {
+		ptr, _ = syscall.UTF16PtrFromString(trayMenuLabel(text))
+	}
+	procAppendMenuW.Call(menu, flags, id, uintptr(unsafe.Pointer(ptr)))
+}
+
+// showMenu builds the menu from a fresh snapshot, runs it synchronously
+// (TPM_RETURNCMD) and dispatches the chosen command. The phone IDs are
+// captured here, so a command always refers to the phone that was shown.
 func (t *winTray) showMenu() {
 	devices, _ := t.broker.Snapshot()
 	_, code := t.broker.Verification()
 	model := trayMenuModel(t.port, code, devices)
+	autostartOn, autostartOK := autostartState()
+
 	menu, _, _ := procCreatePopupMenu.Call()
 	if menu == 0 {
 		t.logf("tray menu could not be created")
 		return
 	}
+	// Destroying the root menu also destroys its submenus.
 	defer procDestroyMenu.Call(menu)
-	appendItem := func(flags uintptr, text string) {
-		var ptr *uint16
-		if text != "" {
-			ptr, _ = syscall.UTF16PtrFromString(trayMenuLabel(text))
-		}
-		procAppendMenuW.Call(menu, flags, 0, uintptr(unsafe.Pointer(ptr)))
-	}
-	appendItem(mfString|mfGrayed, model.Status)
+
+	appendMenuItem(menu, mfString|mfGrayed, 0, "Nudge — "+model.Status)
 	if model.Code != "" {
-		appendItem(mfString|mfGrayed, model.Code)
+		appendMenuItem(menu, mfString, cmdCopyCode, model.Code+"  (copiar)")
 	}
-	appendItem(mfSeparator, "")
-	for _, line := range model.Phones {
-		appendItem(mfString|mfGrayed, line)
+	appendMenuItem(menu, mfSeparator, 0, "")
+
+	phones, _, _ := procCreatePopupMenu.Call()
+	if phones != 0 {
+		for i, line := range model.Phones {
+			if i >= len(model.PhoneIDs) {
+				appendMenuItem(phones, mfString|mfGrayed, 0, line)
+				continue
+			}
+			sub, _, _ := procCreatePopupMenu.Call()
+			if sub == 0 {
+				appendMenuItem(phones, mfString|mfGrayed, 0, line)
+				continue
+			}
+			appendMenuItem(sub, mfString, cmdRevokeBase+uintptr(i), "Revocar…")
+			appendMenuItem(phones, mfString|mfPopup, sub, line)
+		}
+		appendMenuItem(menu, mfString|mfPopup, phones, "Teléfonos")
 	}
+	appendMenuItem(menu, mfSeparator, 0, "")
+
+	flags := uintptr(mfString)
+	if autostartOn {
+		flags |= mfChecked
+	}
+	if !autostartOK {
+		flags |= mfGrayed
+	}
+	appendMenuItem(menu, flags, cmdAutostart, "Iniciar con Windows")
+	appendMenuItem(menu, mfString, cmdOpenLog, "Abrir carpeta del log")
+	appendMenuItem(menu, mfSeparator, 0, "")
+	appendMenuItem(menu, mfString, cmdQuit, "Salir de Nudge")
+
 	var pt point
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	hwnd := t.hwnd.Load()
 	// Required so the menu closes when the user clicks elsewhere.
 	procSetForegroundWnd.Call(hwnd)
-	procTrackPopupMenu.Call(menu, tpmRightButton|tpmReturnCmd|tpmNoNotify,
+	cmd, _, _ := procTrackPopupMenu.Call(menu, tpmRightButton|tpmReturnCmd|tpmNoNotify,
 		uintptr(pt.x), uintptr(pt.y), 0, hwnd, 0)
 	procPostMessageW.Call(hwnd, wmNull, 0, 0)
+
+	switch {
+	case cmd == cmdCopyCode:
+		t.copyCode()
+	case cmd == cmdAutostart:
+		t.setAutostart(!autostartOn)
+	case cmd == cmdOpenLog:
+		t.openLogFolder()
+	case cmd == cmdQuit:
+		t.logf("quit requested from the tray")
+		t.quit()
+	case cmd >= cmdRevokeBase && int(cmd-cmdRevokeBase) < len(model.PhoneIDs):
+		t.revoke(model.PhoneIDs[cmd-cmdRevokeBase])
+	}
 }
 
 func trayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {

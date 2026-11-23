@@ -41,26 +41,25 @@ var (
 	procSetTextCharacterExtra  = gdi32.NewProc("SetTextCharacterExtra")
 	procDwmSetWindowAttribute  = dwmapi.NewProc("DwmSetWindowAttribute")
 
-	procShowWindow         = user32.NewProc("ShowWindow")
-	procUpdateWindow       = user32.NewProc("UpdateWindow")
-	procSetTimer           = user32.NewProc("SetTimer")
-	procKillTimer          = user32.NewProc("KillTimer")
-	procAdjustWindowRect   = user32.NewProc("AdjustWindowRect")
-	procIsIconic           = user32.NewProc("IsIconic")
-	procLoadCursorW        = user32.NewProc("LoadCursorW")
-	procSetCursor          = user32.NewProc("SetCursor")
-	procSetMenuDefaultItem = user32.NewProc("SetMenuDefaultItem")
-	procBeginPaint         = user32.NewProc("BeginPaint")
-	procEndPaint           = user32.NewProc("EndPaint")
-	procFillRect           = user32.NewProc("FillRect")
-	procDrawTextW          = user32.NewProc("DrawTextW")
-	procInvalidateRect     = user32.NewProc("InvalidateRect")
-	procGetDC              = user32.NewProc("GetDC")
-	procReleaseDC          = user32.NewProc("ReleaseDC")
-	procGetClientRect      = user32.NewProc("GetClientRect")
-	procSetWindowPos       = user32.NewProc("SetWindowPos")
-	procTrackMouseEvent    = user32.NewProc("TrackMouseEvent")
-	procScreenToClient     = user32.NewProc("ScreenToClient")
+	procShowWindow       = user32.NewProc("ShowWindow")
+	procUpdateWindow     = user32.NewProc("UpdateWindow")
+	procSetTimer         = user32.NewProc("SetTimer")
+	procKillTimer        = user32.NewProc("KillTimer")
+	procAdjustWindowRect = user32.NewProc("AdjustWindowRect")
+	procIsIconic         = user32.NewProc("IsIconic")
+	procLoadCursorW      = user32.NewProc("LoadCursorW")
+	procSetCursor        = user32.NewProc("SetCursor")
+	procBeginPaint       = user32.NewProc("BeginPaint")
+	procEndPaint         = user32.NewProc("EndPaint")
+	procFillRect         = user32.NewProc("FillRect")
+	procDrawTextW        = user32.NewProc("DrawTextW")
+	procInvalidateRect   = user32.NewProc("InvalidateRect")
+	procGetDC            = user32.NewProc("GetDC")
+	procReleaseDC        = user32.NewProc("ReleaseDC")
+	procGetClientRect    = user32.NewProc("GetClientRect")
+	procSetWindowPos     = user32.NewProc("SetWindowPos")
+	procTrackMouseEvent  = user32.NewProc("TrackMouseEvent")
+	procScreenToClient   = user32.NewProc("ScreenToClient")
 
 	panelWndProcPtr         = syscall.NewCallback(panelWndProc)
 	activePanel             *winPanel
@@ -86,6 +85,10 @@ const (
 	wsCaption     = 0x00C00000
 	wsSysMenu     = 0x00080000
 	wsMinimizeBox = 0x00020000
+
+	// panelWindowStyle is used both to create the window and to size it
+	// (AdjustWindowRect) so the client area stays exact.
+	panelWindowStyle = wsOverlapped | wsCaption | wsSysMenu | wsMinimizeBox
 
 	wmPaint       = 0x000F
 	wmEraseBkgnd  = 0x0014
@@ -245,7 +248,6 @@ func (t *winTray) openPanel() {
 		p.destroyResources()
 		return
 	}
-	activePanel = p
 	procShowWindow.Call(p.hwnd, swShow)
 	procUpdateWindow.Call(p.hwnd)
 	procSetForegroundWnd.Call(p.hwnd)
@@ -339,14 +341,14 @@ func (p *winPanel) create() error {
 	// Content first, so the window is created at its final height.
 	p.refresh()
 
-	style := uintptr(wsOverlapped | wsCaption | wsSysMenu | wsMinimizeBox)
+	style := uintptr(panelWindowStyle)
 	w, h := panelWindowSize(style, p.clientH)
 	sw, _, _ := procGetSystemMetrics.Call(smCxScreen)
 	sh, _, _ := procGetSystemMetrics.Call(smCyScreen)
 	x, y := (int32(sw)-w)/2, (int32(sh)-h)/2
 
-	// activePanel must be set before CreateWindowExW: the window procedure
-	// receives messages during creation.
+	// create() owns activePanel: it is set before CreateWindowExW (the window
+	// procedure receives messages during creation) and cleared on failure.
 	activePanel = p
 	hwnd, _, _ := procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(wstr(panelWindowClass))), uintptr(unsafe.Pointer(wstr(panelTitle))), style,
 		uintptr(x), uintptr(y), uintptr(w), uintptr(h), 0, 0, hInst, 0)
@@ -422,7 +424,7 @@ func (p *winPanel) relayout() {
 	}
 	if h != p.clientH {
 		p.clientH = h
-		w, wh := panelWindowSize(uintptr(wsOverlapped|wsCaption|wsSysMenu|wsMinimizeBox), h)
+		w, wh := panelWindowSize(uintptr(panelWindowStyle), h)
 		procSetWindowPos.Call(p.hwnd, 0, 0, 0, uintptr(w), uintptr(wh), swpNoMove|swpNoZOrder|swpNoActivate|swpFrameChg)
 	}
 	procInvalidateRect.Call(p.hwnd, 0, 0)
@@ -789,8 +791,9 @@ func (p *winPanel) activate(k hitKey) {
 		if t.autostartBusy.Load() || !p.autostartOK {
 			return
 		}
-		p.autostartOn = !p.autostartOn
-		t.setAutostart(p.autostartOn)
+		if t.setAutostart(!p.autostartOn) {
+			p.autostartOn = !p.autostartOn
+		}
 		p.relayout()
 		return
 	}

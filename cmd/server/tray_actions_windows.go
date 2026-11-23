@@ -3,10 +3,12 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"nudge/internal/clipboard"
@@ -23,12 +25,13 @@ var (
 )
 
 const (
-	csidlStartup     = 0x0007
-	swShowNormal     = 1
-	createNoWindow   = 0x08000000
-	autostartScript  = "toggle-autostart.ps1"
-	maxPathChars     = 260
-	shellExecuteOKAt = 32 // ShellExecuteW returns > 32 on success
+	csidlStartup         = 0x0007
+	swShowNormal         = 1
+	createNoWindow       = 0x08000000
+	autostartScript      = "toggle-autostart.ps1"
+	maxPathChars         = 260
+	autostartTimeout     = 30 * time.Second
+	shellExecuteMaxError = 32 // ShellExecuteW returns > 32 on success
 )
 
 // startupDir is the user's Startup folder (honours folder redirection).
@@ -67,24 +70,37 @@ func autostartScriptPath() string {
 }
 
 // setAutostart runs the installed toggle script hidden; the .lnk is created
-// with the same target, icon and description as the installer's.
-func (t *winTray) setAutostart(on bool) {
+// with the same target, icon and description as the installer's. It returns
+// false (doing nothing) when a toggle is already in flight.
+func (t *winTray) setAutostart(on bool) bool {
 	state := "off"
 	if on {
 		state = "on"
 	}
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
+	// Single owner of the busy flag: tray menu and panel both come through
+	// here, so overlapping toggles are refused whoever calls.
+	if !t.autostartBusy.CompareAndSwap(false, true) {
+		t.logf("autostart %s ignored: a toggle is already running", state)
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), autostartTimeout)
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive",
 		"-ExecutionPolicy", "Bypass", "-File", autostartScriptPath(), state, "-NoPause")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
-	t.autostartBusy.Store(true)
 	go func() {
 		defer t.autostartBusy.Store(false)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		defer cancel()
+		out, err := cmd.CombinedOutput()
+		switch {
+		case ctx.Err() == context.DeadlineExceeded:
+			t.logf("autostart %s timed out after %v and was killed: %s", state, autostartTimeout, out)
+		case err != nil:
 			t.logf("autostart %s failed: %v: %s", state, err, out)
-			return
+		default:
+			t.logf("autostart %s", state)
 		}
-		t.logf("autostart %s", state)
 	}()
+	return true
 }
 
 func (t *winTray) copyCode() {
@@ -109,7 +125,7 @@ func shellOpen(hwnd uintptr, target string, logf func(string, ...any)) {
 	}
 	r, _, callErr := procShellExecuteW.Call(hwnd, uintptr(unsafe.Pointer(verb)),
 		uintptr(unsafe.Pointer(file)), 0, 0, swShowNormal)
-	if r <= shellExecuteOKAt {
+	if r <= shellExecuteMaxError {
 		logf("opening %s failed: %v", target, callErr)
 	}
 }

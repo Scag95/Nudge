@@ -20,7 +20,9 @@
 ;     file and runs {app}\toggle-autostart.ps1, so that script is installed)
 ;   - the install folder in the user PATH (HKCU\Environment), added once
 ;   - firewall rules "Nudge" (TCP 8765) and "Nudge mDNS" (UDP 5353), private
-;     profile, made by firewall.ps1 run elevated (one UAC prompt, optional)
+;     profile, same as firewall.ps1, but the elevated PowerShell gets the
+;     commands inline (-EncodedCommand) and never runs a file from the
+;     user-writable install folder (one UAC prompt, optional)
 ; install.ps1/uninstall.ps1 are not installed: running uninstall.ps1 would
 ; delete the folder behind Inno's back and leave a stale entry in Settings >
 ; Apps. Uninstall with Settings > Apps (or unins000.exe).
@@ -321,7 +323,7 @@ begin
   Log('PATH: removed ' + Dir);
 end;
 
-{ ---------- firewall (firewall.ps1, elevated) ---------- }
+{ ---------- firewall (same rules as firewall.ps1, elevated, inline) ---------- }
 
 function FirewallRuleExists(const Name: String): Boolean;
 var
@@ -333,15 +335,93 @@ begin
     ewWaitUntilTerminated, RC) and (RC = 0);
 end;
 
-{ Runs firewall.ps1 (install folder) with Params through a UAC prompt, hidden, and
-  waits. False when it could not start (e.g. the prompt was declined, RC =
-  1223); otherwise RC is the script's exit code. }
-function RunFirewallScript(const Params: String; var RC: Integer): Boolean;
+{ Base64 of the UTF-16LE bytes of S, the format of powershell -EncodedCommand. }
+function Utf16Base64(const S: String): String;
+var
+  Tbl: String;
+  Bytes: array of Integer;
+  I, N, B0, B1, B2: Integer;
+begin
+  Tbl := 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  N := Length(S) * 2;
+  SetArrayLength(Bytes, N);
+  for I := 1 to Length(S) do
+  begin
+    Bytes[(I - 1) * 2] := Ord(S[I]) and $FF;
+    Bytes[(I - 1) * 2 + 1] := (Ord(S[I]) shr 8) and $FF;
+  end;
+  Result := '';
+  I := 0;
+  while I < N do
+  begin
+    B0 := Bytes[I];
+    if I + 1 < N then B1 := Bytes[I + 1] else B1 := 0;
+    if I + 2 < N then B2 := Bytes[I + 2] else B2 := 0;
+    Result := Result + Tbl[(B0 shr 2) + 1]
+      + Tbl[(((B0 and 3) shl 4) or (B1 shr 4)) + 1];
+    if I + 1 < N then
+      Result := Result + Tbl[(((B1 and 15) shl 2) or (B2 shr 6)) + 1]
+    else
+      Result := Result + '=';
+    if I + 2 < N then
+      Result := Result + Tbl[(B2 and 63) + 1]
+    else
+      Result := Result + '=';
+    I := I + 3;
+  end;
+end;
+
+{ Doubles single quotes so S can sit inside a PowerShell '...' literal. }
+function PsQuote(const S: String): String;
+begin
+  Result := S;
+  StringChangeEx(Result, '''', '''''', True);
+end;
+
+{ The PowerShell text that adds (Add = True, Prog = path of
+  nudge-background.exe) or removes the Nudge rules; it mirrors firewall.ps1
+  (names, ports, private profile, delete first so "add" never duplicates, exit
+  3 when netsh fails or a rule survives the removal). The double quote that
+  netsh needs comes from [char]34, so the text has no quoting to escape. }
+function FirewallCommand(Add: Boolean; const Prog: String): String;
+begin
+  Result :=
+    '$ErrorActionPreference=''Stop'';$q=[char]34;' +
+    'function Invoke-Netsh([string]$a){' +
+      '$i=New-Object System.Diagnostics.ProcessStartInfo;' +
+      '$i.FileName=Join-Path $env:SystemRoot ''System32\netsh.exe'';' +
+      '$i.Arguments=$a;$i.UseShellExecute=$false;$i.CreateNoWindow=$true;' +
+      '$i.RedirectStandardOutput=$true;$i.RedirectStandardError=$true;' +
+      '$p=[System.Diagnostics.Process]::Start($i);' +
+      '[void]$p.StandardOutput.ReadToEnd();[void]$p.StandardError.ReadToEnd();' +
+      '$p.WaitForExit();$p.ExitCode};' +
+    'try{' +
+    'foreach($n in ''Nudge'',''Nudge mDNS''){' +
+      '[void](Invoke-Netsh (''advfirewall firewall delete rule name=''+$q+$n+$q))};';
+  if Add then
+    Result := Result +
+      '$prog=''' + PsQuote(Prog) + ''';' +
+      'foreach($a in ' +
+      '(''advfirewall firewall add rule name=''+$q+''Nudge''+$q+'' dir=in action=allow protocol=TCP localport=8765 profile=private program=''+$q+$prog+$q+'' enable=yes''),' +
+      '(''advfirewall firewall add rule name=''+$q+''Nudge mDNS''+$q+'' dir=in action=allow protocol=UDP localport=5353 profile=private program=''+$q+$prog+$q+'' enable=yes'')' +
+      '){if((Invoke-Netsh $a) -ne 0){exit 3}};exit 0'
+  else
+    Result := Result +
+      'foreach($n in ''Nudge'',''Nudge mDNS''){' +
+        'if((Invoke-Netsh (''advfirewall firewall show rule name=''+$q+$n+$q)) -eq 0){exit 3}};exit 0';
+  Result := Result + '}catch{exit 3}';
+end;
+
+{ Runs the firewall command in an elevated PowerShell (UAC prompt, hidden) and
+  waits. Nothing from the install folder is executed: the command travels
+  inline, so a file swapped there cannot be run as administrator. False when
+  it could not start (e.g. the prompt was declined, RC = 1223); otherwise RC
+  is the PowerShell exit code. }
+function RunFirewallCommand(const Command: String; var RC: Integer): Boolean;
 begin
   Result := ShellExec('runas', PowerShellExe,
-    '-NoProfile -ExecutionPolicy Bypass -File "' +
-    ExpandConstant('{app}\firewall.ps1') + '" ' + Params,
-    '', SW_HIDE, ewWaitUntilTerminated, RC);
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' +
+    Utf16Base64(Command), '', SW_HIDE, ewWaitUntilTerminated, RC);
 end;
 
 procedure AddFirewallRules;
@@ -353,29 +433,30 @@ begin
     Log('Firewall: the Nudge rules already exist');
     Exit;
   end;
-  if not RunFirewallScript('-Action add -Program "' +
-    ExpandConstant('{app}\nudge-background.exe') + '"', RC) then
+  if not RunFirewallCommand(FirewallCommand(True,
+    ExpandConstant('{app}\nudge-background.exe')), RC) then
   begin
     Log(Format('Firewall: not added (elevation declined or failed: %d %s)', [RC, SysErrorMessage(RC)]));
     SuppressibleMsgBox(CustomMessage('FirewallDeclined'), mbInformation, MB_OK, IDOK);
   end
   else if RC <> 0 then
   begin
-    Log(Format('Firewall: firewall.ps1 add exited with %d', [RC]));
+    Log(Format('Firewall: the add command exited with %d', [RC]));
     SuppressibleMsgBox(FmtMessage(CustomMessage('FirewallFailed'), [IntToStr(RC)]), mbInformation, MB_OK, IDOK);
   end
   else
     Log('Firewall: rules added');
 end;
 
-{ Best effort, like uninstall.ps1: only asks for UAC when a rule exists. }
+{ Best effort, like uninstall.ps1: only asks for UAC when a rule exists.
+  Runs no file from the install folder. }
 procedure RemoveFirewallRules;
 var
   RC: Integer;
 begin
   if not (FirewallRuleExists('Nudge') or FirewallRuleExists('Nudge mDNS')) then
     Exit;
-  if RunFirewallScript('-Action remove', RC) and (RC = 0) then
+  if RunFirewallCommand(FirewallCommand(False, ''), RC) and (RC = 0) then
     Log('Firewall: rules removed')
   else
   begin
@@ -425,7 +506,6 @@ begin
   case CurUninstallStep of
     usUninstall:
       begin
-        { Before any file is removed: firewall.ps1 is still installed. }
         StopNudge;
         RemoveFromUserPath(ExpandConstant('{app}'));
         RemoveFirewallRules;

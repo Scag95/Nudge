@@ -21,30 +21,31 @@ import (
 // Broker.Snapshot, which is safe for concurrent use.
 
 var (
-	shell32               = syscall.NewLazyDLL("shell32.dll")
-	kernel32              = syscall.NewLazyDLL("kernel32.dll")
-	procShellNotifyIconW  = shell32.NewProc("Shell_NotifyIconW")
-	procGetModuleHandleW  = kernel32.NewProc("GetModuleHandleW")
-	procRegisterClassExW  = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW   = user32.NewProc("CreateWindowExW")
-	procDestroyWindow     = user32.NewProc("DestroyWindow")
-	procDefWindowProcW    = user32.NewProc("DefWindowProcW")
-	procGetMessageW       = user32.NewProc("GetMessageW")
-	procTranslateMessage  = user32.NewProc("TranslateMessage")
-	procDispatchMessageW  = user32.NewProc("DispatchMessageW")
-	procPostMessageW      = user32.NewProc("PostMessageW")
-	procPostQuitMessage   = user32.NewProc("PostQuitMessage")
-	procRegisterWindowMsg = user32.NewProc("RegisterWindowMessageW")
-	procLoadImageW        = user32.NewProc("LoadImageW")
-	procLoadIconW         = user32.NewProc("LoadIconW")
-	procDestroyIcon       = user32.NewProc("DestroyIcon")
-	procGetSystemMetrics  = user32.NewProc("GetSystemMetrics")
-	procCreatePopupMenu   = user32.NewProc("CreatePopupMenu")
-	procAppendMenuW       = user32.NewProc("AppendMenuW")
-	procTrackPopupMenu    = user32.NewProc("TrackPopupMenu")
-	procDestroyMenu       = user32.NewProc("DestroyMenu")
-	procSetForegroundWnd  = user32.NewProc("SetForegroundWindow")
-	procGetCursorPos      = user32.NewProc("GetCursorPos")
+	shell32                = syscall.NewLazyDLL("shell32.dll")
+	kernel32               = syscall.NewLazyDLL("kernel32.dll")
+	procShellNotifyIconW   = shell32.NewProc("Shell_NotifyIconW")
+	procGetModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
+	procRegisterClassExW   = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW    = user32.NewProc("CreateWindowExW")
+	procDestroyWindow      = user32.NewProc("DestroyWindow")
+	procDefWindowProcW     = user32.NewProc("DefWindowProcW")
+	procGetMessageW        = user32.NewProc("GetMessageW")
+	procTranslateMessage   = user32.NewProc("TranslateMessage")
+	procDispatchMessageW   = user32.NewProc("DispatchMessageW")
+	procPostMessageW       = user32.NewProc("PostMessageW")
+	procPostQuitMessage    = user32.NewProc("PostQuitMessage")
+	procRegisterWindowMsg  = user32.NewProc("RegisterWindowMessageW")
+	procLoadImageW         = user32.NewProc("LoadImageW")
+	procLoadIconW          = user32.NewProc("LoadIconW")
+	procDestroyIcon        = user32.NewProc("DestroyIcon")
+	procGetSystemMetrics   = user32.NewProc("GetSystemMetrics")
+	procCreatePopupMenu    = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW        = user32.NewProc("AppendMenuW")
+	procTrackPopupMenu     = user32.NewProc("TrackPopupMenu")
+	procDestroyMenu        = user32.NewProc("DestroyMenu")
+	procSetForegroundWnd   = user32.NewProc("SetForegroundWindow")
+	procGetCursorPos       = user32.NewProc("GetCursorPos")
+	procSetMenuDefaultItem = user32.NewProc("SetMenuDefaultItem")
 )
 
 const (
@@ -393,7 +394,7 @@ func (t *winTray) showMenu() {
 	if autostartOn {
 		flags |= mfChecked
 	}
-	if !autostartOK {
+	if !autostartOK || t.autostartBusy.Load() {
 		flags |= mfGrayed
 	}
 	appendMenuItem(menu, flags, cmdAutostart, "Iniciar con Windows")

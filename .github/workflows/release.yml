@@ -1,6 +1,7 @@
 name: release
 
-# Builds the three release files (Arch package, Windows zip, signed APK) and,
+# Builds the four release files (Arch package, Windows zip, Windows setup,
+# signed APK) and,
 # for a pushed `v*` tag, publishes the GitHub release with SHA256SUMS and the
 # notes of that version from CHANGELOG.md.
 #
@@ -21,6 +22,7 @@ on:
       - ".github/workflows/release.yml"
       - "pkgbuild/**"
       - "scripts/build-windows.sh"
+      - "scripts/build-windows-setup.sh"
       - "packaging/windows/**"
       - "android/**"
       - "cmd/server/version.go"
@@ -151,6 +153,33 @@ jobs:
           path: dist/nudge-${{ needs.check.outputs.version }}-windows-x64.zip
           if-no-files-found: error
 
+  # The Inno Setup installer is compiled on Windows (ISCC) from the zip
+  # built above, so both downloads carry the very same executables.
+  windows-setup:
+    needs: [check, windows-zip]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: nudge-windows-zip
+          path: dist
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - run: scripts/build-windows-setup.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nudge-windows-setup
+          path: dist/nudge-setup-${{ needs.check.outputs.version }}-windows-x64.exe
+          if-no-files-found: error
+
   apk:
     needs: check
     runs-on: ubuntu-latest
@@ -241,7 +270,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [check, arch, windows-zip, apk]
+    needs: [check, arch, windows-zip, windows-setup, apk]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -259,7 +288,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -l
-          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 4
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
       - name: Release notes from CHANGELOG.md

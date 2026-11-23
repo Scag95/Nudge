@@ -12,10 +12,21 @@ cambia el id de la app de Android. No es compatible con la 0.1.0: leé
 
 ### Agregado
 
-- Windows: ícono en el área de notificación. Con clic derecho muestra el
-  estado, el código de verificación de la PC y los teléfonos emparejados. Una
-  solicitud de emparejamiento también avisa con una notificación; aprobar
-  sigue siendo solo desde la ventana Sí/No.
+- Windows: ícono en el área de notificación. Una solicitud de emparejamiento
+  avisa con una notificación. Con clic derecho, el menú muestra el estado y
+  permite copiar el código de verificación, revocar un teléfono (con
+  confirmación), activar o desactivar el inicio con Windows, abrir la carpeta
+  del log y salir de Nudge.
+- Windows: panel de Nudge (clic en el ícono o "Abrir panel…"), con el
+  estilo oscuro de la app de Android: el nombre de la PC, el código de
+  verificación con "Copiar", un aviso para aprobar o rechazar cada solicitud
+  de emparejamiento, los teléfonos emparejados con "Revocar" y el
+  interruptor "Iniciar con Windows". La ventana Sí/No sigue funcionando.
+- Windows: instalador `nudge-setup-<versión>-windows-x64.exe` (Inno Setup).
+  Instala por usuario sin pedir administrador (salvo para el firewall),
+  aparece en Configuración → Aplicaciones con su desinstalador y ofrece el
+  inicio automático, el `PATH` y las reglas del firewall. El zip sigue
+  publicándose como alternativa.
 - Windows: `nudge.exe` y `nudge-background.exe` traen ícono, información de
   versión y un manifiesto.
 - Versión del protocolo (#12). `/health` responde
@@ -26,8 +37,8 @@ cambia el id de la app de Android. No es compatible con la 0.1.0: leé
   variables de entorno (`NUDGE_KEYSTORE` y sus contraseñas). Sin ellas sale
   sin firmar; nunca se usa la clave debug (#14).
 - Workflow de release (#15): al pushear un tag `v*` compila el paquete de
-  Arch, el zip de Windows y el APK firmado, genera `SHA256SUMS` y publica la
-  release con las notas de este archivo.
+  Arch, el zip y el instalador de Windows y el APK firmado, genera
+  `SHA256SUMS` y publica la release con las notas de este archivo.
 - Workflow `windows.yml`: corre los tests de Go en `windows-latest` y prueba
   el zip de punta a punta (instalador, servidor, CLI, emparejamiento,
   portapapeles y desinstalador).
@@ -67,6 +78,9 @@ cambia el id de la app de Android. No es compatible con la 0.1.0: leé
   sin avisar. Un test fija ahora el layout contra `linux/uinput.h`.
 - Windows: `Uninstall Nudge.cmd` no encontraba `uninstall.ps1` si se lo
   abría con una ruta relativa.
+- El socket de control (`nudge pair`) fallaba con un `bind: invalid argument`
+  poco claro si su ruta pasaba de 108 bytes; ahora el error lo explica y
+  sugiere `NUDGE_CTL_SOCK`.
 - Android: un `401` de un pedido hecho con un token viejo ya no corta el
   sync ni pide emparejar de nuevo cuando ya hay un token nuevo guardado.
 

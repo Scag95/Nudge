@@ -76,7 +76,9 @@ func (t *winTray) setAutostart(on bool) {
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
 		"-ExecutionPolicy", "Bypass", "-File", autostartScriptPath(), state, "-NoPause")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	t.autostartBusy.Store(true)
 	go func() {
+		defer t.autostartBusy.Store(false)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.logf("autostart %s failed: %v: %s", state, err, out)
 			return

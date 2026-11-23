@@ -53,6 +53,9 @@ const (
 	wmClose       = 0x0010
 	wmContextMenu = 0x007B
 	wmRButtonUp   = 0x0205
+	wmLButtonUp   = 0x0202
+	ninSelect     = 0x0400 // WM_USER: a click on the icon (version 4)
+	ninKeySelect  = 0x0401
 	wmApp         = 0x8000
 	wmTrayCB      = wmApp + 1
 	wmTrayNotice  = wmApp + 2
@@ -86,6 +89,7 @@ const (
 	cmdAutostart    = 2
 	cmdOpenLog      = 3
 	cmdQuit         = 4
+	cmdOpenPanel    = 5
 	cmdRevokeBase   = 100
 	tpmRightButton  = 0x0002
 	tpmReturnCmd    = 0x0100
@@ -145,6 +149,8 @@ type winTray struct {
 	broker *pair.Broker
 	logf   func(string, ...any)
 	quit   func() // asks runServer to shut down; must not block
+
+	autostartBusy atomic.Bool // the toggle script is running
 
 	hwnd        atomic.Uintptr
 	done        chan struct{}
@@ -355,6 +361,9 @@ func (t *winTray) showMenu() {
 	// Destroying the root menu also destroys its submenus.
 	defer procDestroyMenu.Call(menu)
 
+	appendMenuItem(menu, mfString, cmdOpenPanel, "Abrir panel…")
+	procSetMenuDefaultItem.Call(menu, cmdOpenPanel, 0)
+	appendMenuItem(menu, mfSeparator, 0, "")
 	appendMenuItem(menu, mfString|mfGrayed, 0, "Nudge — "+model.Status)
 	if model.Code != "" {
 		appendMenuItem(menu, mfString, cmdCopyCode, model.Code+"  (copiar)")
@@ -402,6 +411,8 @@ func (t *winTray) showMenu() {
 	procPostMessageW.Call(hwnd, wmNull, 0, 0)
 
 	switch {
+	case cmd == cmdOpenPanel:
+		t.openPanel()
 	case cmd == cmdCopyCode:
 		t.copyCode()
 	case cmd == cmdAutostart:
@@ -425,8 +436,11 @@ func trayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 	switch uint32(msg) {
 	case wmTrayCB:
 		event := uint32(lParam & 0xFFFF)
-		if (t.version4 && event == wmContextMenu) || (!t.version4 && event == wmRButtonUp) {
+		switch {
+		case (t.version4 && event == wmContextMenu) || (!t.version4 && event == wmRButtonUp):
 			t.showMenu()
+		case (t.version4 && (event == ninSelect || event == ninKeySelect)) || (!t.version4 && event == wmLButtonUp):
+			t.openPanel()
 		}
 		return 0
 	case wmTrayNotice:
@@ -436,6 +450,9 @@ func trayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 		procDestroyWindow.Call(hwnd)
 		return 0
 	case wmDestroy:
+		if p := activePanel; p != nil && p.hwnd != 0 {
+			procDestroyWindow.Call(p.hwnd)
+		}
 		t.remove()
 		procPostQuitMessage.Call(0)
 		return 0

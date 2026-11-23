@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,9 +31,25 @@ const (
 	createNoWindow       = 0x08000000
 	autostartScript      = "toggle-autostart.ps1"
 	maxPathChars         = 260
-	autostartTimeout     = 30 * time.Second
 	shellExecuteMaxError = 32 // ShellExecuteW returns > 32 on success
 )
+
+// autostartTimeout bounds one toggle run (a var so tests can shorten it).
+var autostartTimeout = 30 * time.Second
+
+// runAutostartScript runs the toggle script for state "on"/"off" and returns
+// when it ends or ctx is cancelled (which kills it). A var so tests can
+// replace it.
+var runAutostartScript = func(ctx context.Context, state string) error {
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive",
+		"-ExecutionPolicy", "Bypass", "-File", autostartScriptPath(), state, "-NoPause")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, out)
+	}
+	return nil
+}
 
 // startupDir is the user's Startup folder (honours folder redirection).
 func startupDir() (string, bool) {
@@ -84,18 +101,15 @@ func (t *winTray) setAutostart(on bool) bool {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), autostartTimeout)
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive",
-		"-ExecutionPolicy", "Bypass", "-File", autostartScriptPath(), state, "-NoPause")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 	go func() {
 		defer t.autostartBusy.Store(false)
 		defer cancel()
-		out, err := cmd.CombinedOutput()
+		err := runAutostartScript(ctx, state)
 		switch {
 		case ctx.Err() == context.DeadlineExceeded:
-			t.logf("autostart %s timed out after %v and was killed: %s", state, autostartTimeout, out)
+			t.logf("autostart %s timed out after %v and was killed: %v", state, autostartTimeout, err)
 		case err != nil:
-			t.logf("autostart %s failed: %v: %s", state, err, out)
+			t.logf("autostart %s failed: %v", state, err)
 		default:
 			t.logf("autostart %s", state)
 		}

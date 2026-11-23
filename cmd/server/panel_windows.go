@@ -226,11 +226,14 @@ type winPanel struct {
 	copiedUntil    time.Time
 	copiedShown    bool
 
-	model         panelModel
-	haveModel     bool
-	autostartOn   bool
-	autostartOK   bool
-	haveAutostart bool
+	model       panelModel
+	haveModel   bool
+	autostartOn bool
+	// autostartPending: a toggle script is in flight; the switch is drawn
+	// disabled and never flipped until the real state is re-read.
+	autostartPending bool
+	autostartOK      bool
+	haveAutostart    bool
 }
 
 // openPanel shows the panel, creating it if needed. Tray thread only.
@@ -393,6 +396,11 @@ func (p *winPanel) refresh() {
 
 	changed := !p.haveModel || !reflect.DeepEqual(m, p.model)
 	p.model, p.haveModel = m, true
+	if busy := t.autostartBusy.Load(); busy != p.autostartPending {
+		// A toggle started or ended: repaint (pending look on/off).
+		p.autostartPending = busy
+		changed = true
+	}
 	if !t.autostartBusy.Load() {
 		on, ok := autostartState()
 		if !p.haveAutostart || on != p.autostartOn || ok != p.autostartOK {
@@ -701,14 +709,14 @@ func (p *winPanel) render(g *painter) int32 {
 	g.fill(rect{0, y, w, y + 1}, colLine)
 	fy := y + 1
 	label := colText
-	if !p.autostartOK {
+	if !p.autostartOK || p.autostartPending {
 		label = colMuted
 	}
 	g.text("Iniciar con Windows", f.body, label, rect{x0, fy, x1 - 50, fy + 46}, dtSingleLine|dtVCenter, 0)
 	tr := rect{x1 - 40, fy + 12, x1, fy + 34}
 	track, knob := colLine, colKnobOff
 	switch {
-	case !p.autostartOK:
+	case !p.autostartOK || p.autostartPending:
 		track, knob = colBtn, colOffDisabled
 	case p.autostartOn:
 		track, knob = colAccent, colKnob
@@ -724,7 +732,7 @@ func (p *winPanel) render(g *painter) int32 {
 		kx = tr.right - 19
 	}
 	g.shape(rect{kx, tr.top + 3, kx + 16, tr.top + 19}, -1, knob, knob, false)
-	if p.autostartOK {
+	if p.autostartOK && !p.autostartPending {
 		p.addHit(hitKey{kind: hitAutostart}, rect{x0, fy, x1, fy + 46})
 	}
 	return y + panelFooterH
@@ -791,8 +799,10 @@ func (p *winPanel) activate(k hitKey) {
 		if t.autostartBusy.Load() || !p.autostartOK {
 			return
 		}
+		// Never flip optimistically: the real state is re-read by refresh
+		// (every second) once the script has finished.
 		if t.setAutostart(!p.autostartOn) {
-			p.autostartOn = !p.autostartOn
+			p.autostartPending = true
 		}
 		p.relayout()
 		return

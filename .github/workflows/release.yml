@@ -23,6 +23,7 @@ on:
       - "pkgbuild/**"
       - "scripts/build-windows.sh"
       - "scripts/build-windows-setup.sh"
+      - "scripts/test-windows-setup.sh"
       - "packaging/windows/**"
       - "android/**"
       - "cmd/server/version.go"
@@ -173,6 +174,8 @@ jobs:
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
             choco install innosetup -y --no-progress
           }
+      - name: Test the setup's firewall encoding
+        run: scripts/test-windows-setup.sh
       - run: scripts/build-windows-setup.sh
       - uses: actions/upload-artifact@v4
         with:

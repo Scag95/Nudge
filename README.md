@@ -32,7 +32,7 @@ Antes se llamaba Clipboard Share.
 | Plataforma | Qué hay | Estado |
 |------------|---------|--------|
 | Linux (Arch/Omarchy) | Paquete `nudge`: servidor, CLI y panel con ícono en la bandeja | Probado instalando el paquete; es la versión más completa |
-| Windows 10/11 x64 | Zip con instalador por usuario e ícono en la bandeja | Beta: probado en GitHub Actions (`windows-latest`), todavía no en una PC física |
+| Windows 10/11 x64 | Instalador `.exe` por usuario (o zip) e ícono en la bandeja | Beta: probado en GitHub Actions (`windows-latest`), todavía no en una PC física |
 | Android | APK con firma debug | Beta personal, sin Play Store |
 
 Los tres están en la [release 0.1.0](https://github.com/Scag95/Nudge/releases/tag/v0.1.0)
@@ -53,9 +53,10 @@ Eso, el panel, el inicio automático y cómo compilar el paquete están en
 
 **Windows**
 
-Extraé el zip y hacé doble clic en `Install Nudge.cmd`. No pide
-administrador, salvo para las reglas del firewall (te pregunta). Los
-ejecutables no están firmados, así que SmartScreen puede avisar. Detalles en
+Descargá `nudge-setup-<versión>-windows-x64.exe` y ejecutalo. No pide
+administrador, salvo para las reglas del firewall (es una opción del
+instalador). También está el zip con `Install Nudge.cmd`. Nada está firmado,
+así que SmartScreen puede avisar. Detalles en
 [docs/windows.md](docs/windows.md).
 
 **Android**

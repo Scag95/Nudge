@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -60,7 +61,7 @@ func TestLinuxConfigRootStaysDotConfig(t *testing.T) {
 func listenWithFailingChmod(t *testing.T, goos string) (*ControlServer, error, string) {
 	t.Helper()
 	b := newTestBroker(t)
-	path := filepath.Join(t.TempDir(), "ctl.sock")
+	path := filepath.Join(shortTempDir(t), "ctl.sock")
 	t.Setenv("NUDGE_CTL_SOCK", path)
 	prevOS, prevChmod := hostOS, chmodPath
 	hostOS = goos
@@ -108,5 +109,21 @@ func TestControlPathIsSocketLike(t *testing.T) {
 		if got := isSocketLike(c.goos, c.mode); got != c.want {
 			t.Errorf("isSocketLike(%s, %v) = %v, want %v", c.goos, c.mode, got, c.want)
 		}
+	}
+}
+
+// A control path longer than sun_path must fail with a clear, actionable
+// error instead of the opaque "bind: invalid argument".
+func TestListenControlRejectsTooLongPath(t *testing.T) {
+	b := newTestBroker(t)
+	path := filepath.Join(shortTempDir(t), strings.Repeat("x", maxControlPathLen), "ctl.sock")
+	t.Setenv("NUDGE_CTL_SOCK", path)
+	control, err := ListenControl(b)
+	if err == nil {
+		control.Close()
+		t.Fatal("ListenControl with a too-long path succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "too long") || !strings.Contains(err.Error(), "NUDGE_CTL_SOCK") {
+		t.Fatalf("error = %q, want it to say the path is too long and mention NUDGE_CTL_SOCK", err)
 	}
 }

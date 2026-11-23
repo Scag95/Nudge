@@ -530,6 +530,10 @@ func isSocketLike(goos string, mode os.FileMode) bool {
 	return goos == "windows" && mode.Type() == os.ModeIrregular
 }
 
+// maxControlPathLen is the size of sun_path for AF_UNIX on Linux and Windows.
+// A longer path makes bind fail with an opaque "invalid argument".
+const maxControlPathLen = 108
+
 // ListenControl removes a stale socket and starts serving ControlPath. An
 // active socket is never removed. Close unlinks the socket created here.
 // Windows 10 1803+ supports AF_UNIX; there os.Chmod is not meaningful for a
@@ -537,6 +541,9 @@ func isSocketLike(goos string, mode os.FileMode) bool {
 // ignored on Windows and fatal elsewhere.
 func ListenControl(b *Broker) (*ControlServer, error) {
 	path := ControlPath()
+	if len(path) > maxControlPathLen {
+		return nil, fmt.Errorf("control socket path is too long (%d > %d bytes): %s; set NUDGE_CTL_SOCK to a shorter path", len(path), maxControlPathLen, path)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create control socket directory: %w", err)
 	}

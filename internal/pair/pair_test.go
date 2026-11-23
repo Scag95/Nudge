@@ -260,7 +260,7 @@ func TestControlSocketCommandsAndTokenPrivacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("NUDGE_CTL_SOCK", filepath.Join(t.TempDir(), "ctl.sock"))
+	t.Setenv("NUDGE_CTL_SOCK", filepath.Join(shortTempDir(t), "ctl.sock"))
 	control, err := ListenControl(b)
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +342,7 @@ func TestControlListCarriesTheVerificationCode(t *testing.T) {
 	if _, err := b.Request("device-1", "First", "192.0.2.10", ""); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("NUDGE_CTL_SOCK", filepath.Join(t.TempDir(), "ctl.sock"))
+	t.Setenv("NUDGE_CTL_SOCK", filepath.Join(shortTempDir(t), "ctl.sock"))
 	control, err := ListenControl(b)
 	if err != nil {
 		t.Fatal(err)
@@ -386,7 +386,7 @@ func TestControlListCarriesTheVerificationCode(t *testing.T) {
 
 func TestListenControlRemovesStaleSocket(t *testing.T) {
 	b := newTestBroker(t)
-	path := filepath.Join(t.TempDir(), "ctl.sock")
+	path := filepath.Join(shortTempDir(t), "ctl.sock")
 	t.Setenv("NUDGE_CTL_SOCK", path)
 	stale, err := net.Listen("unix", path)
 	if err != nil {

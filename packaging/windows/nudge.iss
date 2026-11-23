@@ -20,7 +20,9 @@
 ;     file and runs {app}\toggle-autostart.ps1, so that script is installed)
 ;   - the install folder in the user PATH (HKCU\Environment), added once
 ;   - firewall rules "Nudge" (TCP 8765) and "Nudge mDNS" (UDP 5353), private
-;     profile, made by firewall.ps1 run elevated (one UAC prompt, optional)
+;     profile, same as firewall.ps1, but the elevated PowerShell gets the
+;     commands inline (-EncodedCommand) and never runs a file from the
+;     user-writable install folder (one UAC prompt, optional)
 ; install.ps1/uninstall.ps1 are not installed: running uninstall.ps1 would
 ; delete the folder behind Inno's back and leave a stale entry in Settings >
 ; Apps. Uninstall with Settings > Apps (or unins000.exe).
@@ -321,7 +323,7 @@ begin
   Log('PATH: removed ' + Dir);
 end;
 
-{ ---------- firewall (firewall.ps1, elevated) ---------- }
+{ ---------- firewall (same rules as firewall.ps1, elevated, inline) ---------- }
 
 function FirewallRuleExists(const Name: String): Boolean;
 var
@@ -333,15 +335,18 @@ begin
     ewWaitUntilTerminated, RC) and (RC = 0);
 end;
 
-{ Runs firewall.ps1 (install folder) with Params through a UAC prompt, hidden, and
-  waits. False when it could not start (e.g. the prompt was declined, RC =
-  1223); otherwise RC is the script's exit code. }
-function RunFirewallScript(const Params: String; var RC: Integer): Boolean;
+#include "setup\firewall-code.iss"
+
+{ Runs the firewall command in an elevated PowerShell (UAC prompt, hidden) and
+  waits. Nothing from the install folder is executed: the command travels
+  inline, so a file swapped there cannot be run as administrator. False when
+  it could not start (e.g. the prompt was declined, RC = 1223); otherwise RC
+  is the PowerShell exit code. }
+function RunFirewallCommand(const Command: String; var RC: Integer): Boolean;
 begin
   Result := ShellExec('runas', PowerShellExe,
-    '-NoProfile -ExecutionPolicy Bypass -File "' +
-    ExpandConstant('{app}\firewall.ps1') + '" ' + Params,
-    '', SW_HIDE, ewWaitUntilTerminated, RC);
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' +
+    Utf16Base64(Command), '', SW_HIDE, ewWaitUntilTerminated, RC);
 end;
 
 procedure AddFirewallRules;
@@ -353,29 +358,30 @@ begin
     Log('Firewall: the Nudge rules already exist');
     Exit;
   end;
-  if not RunFirewallScript('-Action add -Program "' +
-    ExpandConstant('{app}\nudge-background.exe') + '"', RC) then
+  if not RunFirewallCommand(FirewallCommand(True,
+    ExpandConstant('{app}\nudge-background.exe')), RC) then
   begin
     Log(Format('Firewall: not added (elevation declined or failed: %d %s)', [RC, SysErrorMessage(RC)]));
     SuppressibleMsgBox(CustomMessage('FirewallDeclined'), mbInformation, MB_OK, IDOK);
   end
   else if RC <> 0 then
   begin
-    Log(Format('Firewall: firewall.ps1 add exited with %d', [RC]));
+    Log(Format('Firewall: the add command exited with %d', [RC]));
     SuppressibleMsgBox(FmtMessage(CustomMessage('FirewallFailed'), [IntToStr(RC)]), mbInformation, MB_OK, IDOK);
   end
   else
     Log('Firewall: rules added');
 end;
 
-{ Best effort, like uninstall.ps1: only asks for UAC when a rule exists. }
+{ Best effort, like uninstall.ps1: only asks for UAC when a rule exists.
+  Runs no file from the install folder. }
 procedure RemoveFirewallRules;
 var
   RC: Integer;
 begin
   if not (FirewallRuleExists('Nudge') or FirewallRuleExists('Nudge mDNS')) then
     Exit;
-  if RunFirewallScript('-Action remove', RC) and (RC = 0) then
+  if RunFirewallCommand(FirewallCommand(False, ''), RC) and (RC = 0) then
     Log('Firewall: rules removed')
   else
   begin
@@ -425,7 +431,6 @@ begin
   case CurUninstallStep of
     usUninstall:
       begin
-        { Before any file is removed: firewall.ps1 is still installed. }
         StopNudge;
         RemoveFromUserPath(ExpandConstant('{app}'));
         RemoveFirewallRules;

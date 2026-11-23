@@ -127,13 +127,7 @@ func runServer() {
 	// Windows only: a notification-area icon (status and paired phones) that
 	// also announces new requests; a no-op elsewhere. Failure keeps serving.
 	// "Salir de Nudge" in the tray menu shuts the server down like a signal.
-	quit := make(chan struct{}, 1)
-	requestQuit := func() {
-		select {
-		case quit <- struct{}{}:
-		default:
-		}
-	}
+	requestQuit, quit := newQuitSignal()
 	tray := startTray(port, pairer, log.Printf, requestQuit)
 	defer tray.Close()
 
@@ -173,6 +167,19 @@ func runServer() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
+}
+
+// newQuitSignal returns a request function that never blocks (a repeated or
+// concurrent request collapses into one pending signal) and the channel main
+// waits on.
+func newQuitSignal() (request func(), ch <-chan struct{}) {
+	c := make(chan struct{}, 1)
+	return func() {
+		select {
+		case c <- struct{}{}:
+		default:
+		}
+	}, c
 }
 
 // serverTLSConfig serves the one self-signed certificate with TLS 1.2 or later.

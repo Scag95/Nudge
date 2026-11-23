@@ -110,13 +110,19 @@ func trayMenuModel(port, code string, devices []pair.DeviceInfo) trayMenu {
 	return menu
 }
 
+// displayName sanitizes a LAN-supplied device name for the tray and panel,
+// falling back to trayNoName when nothing printable is left.
+func displayName(name string) string {
+	if name = sanitizeDialogField(name, maxDialogName); name == "" {
+		return trayNoName
+	}
+	return name
+}
+
 // trayRevokeConfirm is the Yes/No question shown before revoking a phone
 // from the tray menu. name comes from the LAN and is sanitized.
 func trayRevokeConfirm(name string) (title, text string) {
-	name = sanitizeDialogField(name, maxDialogName)
-	if name == "" {
-		name = trayNoName
-	}
+	name = displayName(name)
 	return "Revocar teléfono", name + " va a perder el acceso a esta PC y tendrá que volver a pedir emparejarse.\n\n¿Revocarlo?"
 }
 

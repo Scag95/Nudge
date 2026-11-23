@@ -130,6 +130,15 @@ redes **privadas** y solo para `nudge-background.exe`: "Nudge" (TCP 8765) y
 si lo rechazás, la instalación sigue y podés volver a ejecutarla después. La
 WiFi tiene que estar marcada como red privada.
 
+El instalador `.exe` le pasa los comandos al PowerShell elevado en línea
+(`-EncodedCommand`), con las mismas reglas que `firewall.ps1`: nunca ejecuta
+como administrador un archivo de la carpeta de instalación, que el usuario puede
+modificar. `firewall.ps1` queda para la instalación con el zip.
+
+La ruta de instalación (que incluye el nombre de usuario) viaja dentro de ese comando
+como base64 y se decodifica en PowerShell, sin comillas que puedan romperse. La
+codificación se prueba con `scripts/test-windows-setup.sh` (necesita Inno Setup).
+
 ## Desinstalar y log
 
 Con el instalador: Configuración → Aplicaciones → Nudge → *Desinstalar*. Con

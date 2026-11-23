@@ -3,10 +3,13 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"nudge/internal/clipboard"
@@ -23,13 +26,30 @@ var (
 )
 
 const (
-	csidlStartup     = 0x0007
-	swShowNormal     = 1
-	createNoWindow   = 0x08000000
-	autostartScript  = "toggle-autostart.ps1"
-	maxPathChars     = 260
-	shellExecuteOKAt = 32 // ShellExecuteW returns > 32 on success
+	csidlStartup         = 0x0007
+	swShowNormal         = 1
+	createNoWindow       = 0x08000000
+	autostartScript      = "toggle-autostart.ps1"
+	maxPathChars         = 260
+	shellExecuteMaxError = 32 // ShellExecuteW returns > 32 on success
 )
+
+// autostartTimeout bounds one toggle run (a var so tests can shorten it).
+var autostartTimeout = 30 * time.Second
+
+// runAutostartScript runs the toggle script for state "on"/"off" and returns
+// when it ends or ctx is cancelled (which kills it). A var so tests can
+// replace it.
+var runAutostartScript = func(ctx context.Context, state string) error {
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive",
+		"-ExecutionPolicy", "Bypass", "-File", autostartScriptPath(), state, "-NoPause")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, out)
+	}
+	return nil
+}
 
 // startupDir is the user's Startup folder (honours folder redirection).
 func startupDir() (string, bool) {
@@ -67,24 +87,34 @@ func autostartScriptPath() string {
 }
 
 // setAutostart runs the installed toggle script hidden; the .lnk is created
-// with the same target, icon and description as the installer's.
-func (t *winTray) setAutostart(on bool) {
+// with the same target, icon and description as the installer's. It returns
+// false (doing nothing) when a toggle is already in flight.
+func (t *winTray) setAutostart(on bool) bool {
 	state := "off"
 	if on {
 		state = "on"
 	}
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
-		"-ExecutionPolicy", "Bypass", "-File", autostartScriptPath(), state, "-NoPause")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
-	t.autostartBusy.Store(true)
+	// Single owner of the busy flag: tray menu and panel both come through
+	// here, so overlapping toggles are refused whoever calls.
+	if !t.autostartBusy.CompareAndSwap(false, true) {
+		t.logf("autostart %s ignored: a toggle is already running", state)
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), autostartTimeout)
 	go func() {
 		defer t.autostartBusy.Store(false)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.logf("autostart %s failed: %v: %s", state, err, out)
-			return
+		defer cancel()
+		err := runAutostartScript(ctx, state)
+		switch {
+		case ctx.Err() == context.DeadlineExceeded:
+			t.logf("autostart %s timed out after %v and was killed: %v", state, autostartTimeout, err)
+		case err != nil:
+			t.logf("autostart %s failed: %v", state, err)
+		default:
+			t.logf("autostart %s", state)
 		}
-		t.logf("autostart %s", state)
 	}()
+	return true
 }
 
 func (t *winTray) copyCode() {
@@ -109,7 +139,7 @@ func shellOpen(hwnd uintptr, target string, logf func(string, ...any)) {
 	}
 	r, _, callErr := procShellExecuteW.Call(hwnd, uintptr(unsafe.Pointer(verb)),
 		uintptr(unsafe.Pointer(file)), 0, 0, swShowNormal)
-	if r <= shellExecuteOKAt {
+	if r <= shellExecuteMaxError {
 		logf("opening %s failed: %v", target, callErr)
 	}
 }

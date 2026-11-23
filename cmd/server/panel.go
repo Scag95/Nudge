@@ -53,14 +53,14 @@ func panelModelFrom(host, code string, devices []pair.DeviceInfo, requests []pai
 	for _, r := range reqs {
 		m.Requests = append(m.Requests, panelRequest{
 			ID:     r.RequestID,
-			Title:  panelName(r.Name) + " quiere emparejarse",
+			Title:  displayName(r.Name) + " quiere emparejarse",
 			Detail: panelIP(r.IP) + " · " + panelAgo(r.RequestedAt, now) + ". ¿El teléfono muestra el mismo código?",
 		})
 	}
 
 	devs := append([]pair.DeviceInfo(nil), devices...)
 	sort.SliceStable(devs, func(i, j int) bool {
-		a, b := strings.ToLower(panelName(devs[i].Name)), strings.ToLower(panelName(devs[j].Name))
+		a, b := strings.ToLower(displayName(devs[i].Name)), strings.ToLower(displayName(devs[j].Name))
 		if a != b {
 			return a < b
 		}
@@ -70,20 +70,13 @@ func panelModelFrom(host, code string, devices []pair.DeviceInfo, requests []pai
 		return devs[i].ID < devs[j].ID
 	})
 	for _, d := range devs {
-		row := panelDevice{ID: d.ID, Name: panelName(d.Name), IP: panelIP(d.IP)}
+		row := panelDevice{ID: d.ID, Name: displayName(d.Name), IP: panelIP(d.IP)}
 		if !d.FirstApproved.IsZero() {
 			row.Date = "emparejado el " + d.FirstApproved.Local().Format("02/01/2006")
 		}
 		m.Devices = append(m.Devices, row)
 	}
 	return m
-}
-
-func panelName(name string) string {
-	if name = sanitizeDialogField(name, maxDialogName); name == "" {
-		return trayNoName
-	}
-	return name
 }
 
 func panelIP(ip string) string {

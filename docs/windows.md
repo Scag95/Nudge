@@ -8,33 +8,73 @@ clipboard y desinstalador). **Todavía no lo probé en una PC física con
 Windows**, así que puede fallar. Si algo no anda, mirá el
 [log](#desinstalar-y-log) y avisá.
 
-## Qué trae el zip
+## Qué se descarga
 
-Se descarga como `nudge-<versión>-windows-x64.zip` (con su `.sha256`) desde la
-[página de releases](https://github.com/Scag95/Nudge/releases). Trae dos
-ejecutables del mismo código:
+Desde la [página de releases](https://github.com/Scag95/Nudge/releases), cada
+uno con su `.sha256`:
+
+- `nudge-setup-<versión>-windows-x64.exe`: el instalador (recomendado).
+- `nudge-<versión>-windows-x64.zip`: lo mismo con un instalador por scripts,
+  como alternativa.
+
+Los dos instalan dos ejecutables del mismo código:
 
 - `nudge.exe`: consola. Es el CLI `nudge pair` y, abierto a mano, el servidor
   con el log en pantalla.
 - `nudge-background.exe`: sin ventana. Es el servidor en segundo plano.
 
-Además vienen el ícono, los scripts de instalación y `README-windows.txt`.
+Además vienen el ícono, los scripts que usan el instalador y la bandeja
+(`toggle-autostart.ps1`, `firewall.ps1`) y `README-windows.txt`.
 
 ## Instalar
 
+### Con el instalador (recomendado)
+
+Ejecutá `nudge-setup-<versión>-windows-x64.exe`. No pide administrador:
+instala en `%LOCALAPPDATA%\Programs\Nudge`, crea **Nudge** en el menú Inicio
+(carpeta Nudge) y al final ofrece "Iniciar Nudge ahora". Tiene tres opciones,
+marcadas por defecto:
+
+- **Iniciar Nudge al iniciar sesión** (acceso directo en la carpeta Inicio).
+- **Agregar nudge al PATH del usuario** (para `nudge pair` en una terminal
+  nueva).
+- **Permitir Nudge en el Firewall de Windows**: pide permiso de
+  administrador (UAC) para crear las reglas (ver [Firewall](#firewall)). Si
+  ya existen, no pregunta; si rechazás el aviso, la instalación sigue igual.
+
+Volver a ejecutarlo actualiza en el lugar: detiene Nudge, reemplaza los
+archivos, recuerda las opciones de la vez anterior (una opción desmarcada
+quita el inicio automático o la entrada del `PATH`) y vuelve a iniciarlo.
+También actualiza una instalación hecha con el zip (misma carpeta) y borra
+sus accesos directos viejos ("Nudge - autostart on-off", "Uninstall Nudge").
+
+Instalación sin ventanas (por ejemplo, para scripts):
+
+```bat
+nudge-setup-1.0.0-windows-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /TASKS="autostart,path"
+```
+
+Sin `/TASKS` usa las opciones por defecto, incluida la del firewall, y el
+aviso de administrador aparece igual.
+
+### Con el zip (alternativa)
+
 1. Extraé el zip completo (clic derecho → *Extraer todo*).
-2. Doble clic en `Install Nudge.cmd`. No pide administrador: instala en
-   `%LOCALAPPDATA%\Programs\Nudge`, crea la carpeta **Nudge** en el menú
-   Inicio ("Nudge", "Nudge - autostart on-off", "Uninstall Nudge"), activa el
-   inicio automático, agrega la carpeta al `PATH` del usuario e inicia el
-   servidor. Volver a ejecutarlo actualiza en el lugar.
+2. Doble clic en `Install Nudge.cmd`. No pide administrador: instala en la
+   misma carpeta, crea la carpeta **Nudge** en el menú Inicio ("Nudge",
+   "Nudge - autostart on-off", "Uninstall Nudge"), activa el inicio
+   automático, agrega la carpeta al `PATH` del usuario e inicia el servidor.
+   Volver a ejecutarlo actualiza en el lugar.
 
 Opciones de `install.ps1`: `-NoAutostart`, `-FirewallRule yes|no` (para
 instalar sin preguntas), `-NoStart`, `-NoPause`.
 
-Los ejecutables **no están firmados**: SmartScreen puede mostrar "Windows
-protegió su PC" (*Más información* → *Ejecutar de todas formas*). Verificá
-antes el SHA256 (`certutil -hashfile <zip> SHA256`).
+### SmartScreen
+
+Ni el instalador ni los ejecutables **están firmados**: SmartScreen puede
+mostrar "Windows protegió su PC" (*Más información* → *Ejecutar de todas
+formas*). Verificá antes el SHA256 (`certutil -hashfile <archivo> SHA256`)
+contra el `.sha256` de la release.
 
 ## Emparejar
 
@@ -77,9 +117,9 @@ el explorador se reinicia, el ícono vuelve solo.
 
 ## Inicio automático
 
-"Nudge - autostart on-off" en el menú Inicio activa o desactiva el acceso
-directo de la carpeta Inicio del usuario (también
-`toggle-autostart.ps1 on|off|status`). No inicia ni detiene el servidor que ya
+El menú del ícono de la bandeja (o, con el zip, "Nudge - autostart on-off" en
+el menú Inicio) activa o desactiva el acceso directo de la carpeta Inicio
+del usuario (también `toggle-autostart.ps1 on|off|status`). No inicia ni detiene el servidor que ya
 corre.
 
 ## Firewall
@@ -92,11 +132,12 @@ WiFi tiene que estar marcada como red privada.
 
 ## Desinstalar y log
 
-Menú Inicio → Nudge → "Uninstall Nudge" (o `Uninstall Nudge.cmd` del zip).
-Detiene el servidor y borra los accesos directos, la entrada del `PATH`, las
-reglas del firewall y la carpeta de instalación. Pregunta antes de borrar
-`%APPDATA%\nudge` (por defecto No), donde quedan los teléfonos emparejados
-(`state.json`).
+Con el instalador: Configuración → Aplicaciones → Nudge → *Desinstalar*. Con
+el zip: menú Inicio → Nudge → "Uninstall Nudge" (o `Uninstall Nudge.cmd`).
+Los dos detienen el servidor y borran los accesos directos, la entrada del
+`PATH`, las reglas del firewall (pide administrador solo si existen) y la
+carpeta de instalación. Preguntan antes de borrar `%APPDATA%\nudge` (por
+defecto No), donde quedan los teléfonos emparejados (`state.json`).
 
 El servidor en segundo plano escribe su log en `%APPDATA%\nudge\nudge.log`.
 
@@ -107,14 +148,29 @@ El servidor en segundo plano escribe su log en `%APPDATA%\nudge\nudge.log`.
   con la ventana Sí/No y revocar con `nudge pair revoke`.
 - Ejecutables sin firmar (SmartScreen).
 
-## Recompilar el zip
+## Recompilar el zip y el instalador
 
-Desde Linux, con Go 1.24, `rsvg-convert`, ImageMagick (`magick`) y `zip`:
+El zip, desde Linux, con Go 1.24, `rsvg-convert`, ImageMagick (`magick`) y
+`zip`:
 
 ```bash
 scripts/build-windows.sh 0.1.0
 # salida: dist/nudge-0.1.0-windows-x64.zip y su .sha256
 ```
+
+El instalador, en Windows (Git Bash) con
+[Inno Setup 6](https://jrsoftware.org/isinfo.php)
+(`winget install JRSoftware.InnoSetup`), a partir de ese zip o de una carpeta
+con su contenido:
+
+```bash
+scripts/build-windows-setup.sh            # usa dist/nudge-<versión>-windows-x64.zip
+scripts/build-windows-setup.sh <carpeta>  # o los archivos ya extraídos
+# salida: dist/nudge-setup-<versión>-windows-x64.exe y su .sha256
+```
+
+La versión sale de `cmd/server/version.go`; el script del instalador es
+[`packaging/windows/nudge.iss`](../packaging/windows/nudge.iss).
 
 Para compilar solo el `.exe`, ver
 [Compilar los binarios](development.md#compilar-los-binarios).

@@ -51,7 +51,7 @@ sus accesos directos viejos ("Nudge - autostart on-off", "Uninstall Nudge").
 Instalación sin ventanas (por ejemplo, para scripts):
 
 ```bat
-nudge-setup-1.0.0-windows-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /TASKS="autostart,path"
+nudge-setup-1.0.1-windows-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /TASKS="autostart,path"
 ```
 
 Sin `/TASKS` usa las opciones por defecto, incluida la del firewall, y el

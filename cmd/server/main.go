@@ -38,7 +38,7 @@ func main() {
 func newRouter(pairer *pair.Broker, injector input.Injector) http.Handler {
 	r := api.NewRouter(clipboardStore{}, pairer, Version)
 	api.AttachPairing(r, pairer)
-	api.AttachInputWS(r, pairer, injector, api.DefaultInputRate)
+	api.AttachInputWSLimits(r, pairer, injector, api.DefaultInputRate, api.DefaultMoveRate)
 	return r
 }
 

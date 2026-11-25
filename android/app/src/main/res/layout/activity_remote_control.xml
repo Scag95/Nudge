@@ -36,6 +36,21 @@
                 android:textStyle="bold" />
 
             <Button
+                android:id="@+id/btnCursorSettings"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/bg_badge"
+                android:contentDescription="Ajustes del cursor"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="⚙"
+                android:textColor="#F5F5F7"
+                android:textSize="18sp" />
+
+            <Button
                 android:id="@+id/btnStatusBadge"
                 style="?android:attr/borderlessButtonStyle"
                 android:layout_width="wrap_content"
@@ -354,6 +369,82 @@
             android:textAllCaps="false"
             android:textColor="#FF9B9B" />
     </LinearLayout>
+    <!-- Cursor settings opened from the gear in the header -->
+    <LinearLayout
+        android:id="@+id/cursorPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginEnd="14dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="62dp"
+        android:background="@drawable/bg_panel"
+        android:elevation="12dp"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Velocidad del cursor"
+                android:textColor="#A8A8B3"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/cursorSpeedValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#F5F5F7"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/cursorSpeedSeek"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:contentDescription="Velocidad del cursor"
+            android:progressTint="#00696D"
+            android:thumbTint="#F5F5F7" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Aceleración"
+            android:textColor="#A8A8B3"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnAccelOff"
+                style="@style/RemoteKey"
+                android:text="Off" />
+
+            <Button
+                android:id="@+id/btnAccelSuave"
+                style="@style/RemoteKey"
+                android:text="Suave" />
+
+            <Button
+                android:id="@+id/btnAccelAlta"
+                style="@style/RemoteKey"
+                android:text="Alta" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- Floating readout of what is being typed, above the soft keyboard -->
     <TextView
         android:id="@+id/typedCard"

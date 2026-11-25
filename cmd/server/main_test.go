@@ -136,16 +136,16 @@ func TestPairListPrintsTheVerificationCodeFirst(t *testing.T) {
 	}
 }
 
-// S2: the server version string is 1.0.0 and /health serves it next to the
+// S2: the server version string is 1.0.1 and /health serves it next to the
 // protocol version.
 func TestHealthReportsServerVersion(t *testing.T) {
-	if Version != "1.0.0" {
-		t.Fatalf("Version = %q, want 1.0.0", Version)
+	if Version != "1.0.1" {
+		t.Fatalf("Version = %q, want 1.0.1", Version)
 	}
 	t.Setenv("NUDGE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	rec := httptest.NewRecorder()
 	newRouter(pair.NewBroker(), &input.Recorder{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
-	if want := `{"status":"ok","protocol":1,"version":"1.0.0"}` + "\n"; rec.Code != http.StatusOK || rec.Body.String() != want {
+	if want := `{"status":"ok","protocol":1,"version":"1.0.1"}` + "\n"; rec.Code != http.StatusOK || rec.Body.String() != want {
 		t.Fatalf("/health = %d %q, want 200 %q", rec.Code, rec.Body.String(), want)
 	}
 }

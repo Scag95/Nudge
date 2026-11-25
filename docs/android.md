@@ -59,6 +59,21 @@ emparejamiento y hay que aprobarlo en el PC (ver [Linux](linux.md#emparejar-un-t
 o [Windows](windows.md#emparejar)). El control remoto requiere la pantalla
 abierta.
 
+### Velocidad y aceleración del cursor
+
+El engranaje ⚙ del encabezado del trackpad abre dos ajustes que se guardan en
+el teléfono y se aplican al instante:
+
+- **Velocidad del cursor**: de 0,5× a 3,0× (por defecto 1,0×).
+- **Aceleración**: *Off* (el movimiento es lineal), *Suave* (por defecto) o
+  *Alta*. Los movimientos lentos siguen siendo 1:1; a medida que el dedo va más
+  rápido, el cursor gana hasta 2× (*Suave*) o 3,5× (*Alta*), con una curva
+  continua y con tope.
+
+El movimiento fraccionario no se pierde (se acumula hasta completar un píxel)
+y la app manda como mucho un `move` por cuadro de pantalla, con la suma de lo
+movido. Si el cursor se siente rápido o lento, ajustá primero la velocidad.
+
 ## Sync de clipboard en segundo plano (celu → PC)
 
 Al elegir un host arranca un servicio con notificación persistente (requisito
@@ -116,4 +131,6 @@ lectura tras cada copia que llega de la PC.
 cd android && ./gradlew testDebugUnitTest
 ```
 
-JUnit sobre la lógica de disparo del sync en segundo plano.
+JUnit sobre la lógica de disparo del sync en segundo plano y sobre el
+movimiento del cursor (acumulación de fracciones, velocidad, aceleración,
+agrupado de `move` por cuadro y `TCP_NODELAY`).

@@ -12,6 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.SocketFactory
 
 /**
  * WebSocket client for the remote-control event stream (S3). One connection
@@ -19,12 +20,19 @@ import java.util.concurrent.TimeUnit
  * answers invalid frames with {"error": ...}.
  */
 class InputClient(
-    private val http: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .pingInterval(20, TimeUnit.SECONDS)
-        .build(),
+    private val http: OkHttpClient = defaultHttpClient(),
 ) {
     companion object {
+        /**
+         * Connect timeout, ping and TCP_NODELAY. TLS and pinning are added later by
+         * [PinnedTls.client] on top of this client, which keeps its socket factory.
+         */
+        fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
+            .socketFactory(NoDelaySocketFactory(SocketFactory.getDefault()))
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .pingInterval(20, TimeUnit.SECONDS)
+            .build()
+
         /** onDisconnected reason when the PC presented a certificate other than the pin. */
         const val PIN_MISMATCH = "pin_mismatch"
     }

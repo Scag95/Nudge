@@ -4,6 +4,30 @@ Los cambios de cada versión de Nudge. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones,
 [Semantic Versioning](https://semver.org/lang/es/).
 
+## [1.0.1] - 2026-11-25
+
+### Cambiado
+
+- Android: el cursor ya no pierde el movimiento fraccionario. Los arrastres
+  lentos avanzan en vez de trabarse y no se mandan más `move 0 0`.
+- Android: los movimientos se agrupan y se mandan como mucho una vez por
+  cuadro de pantalla, con la suma de lo movido; los clics, el scroll y las
+  teclas mandan antes lo pendiente para mantener el orden.
+- Android: la conexión usa `TCP_NODELAY`, sin cambiar el cifrado ni el pin del
+  certificado.
+- Servidor: los `move` tienen su propio tope (1000 eventos/s por conexión) y
+  se descartan en silencio al pasarlo. Los celulares de 120 Hz ya no reciben
+  "rate limit exceeded" mientras mueven el cursor. El resto de los eventos
+  conserva el máximo de 120/s y su mensaje de error.
+- El protocolo no cambió: la app 1.0.x y el servidor 1.0.x siguen siendo
+  compatibles en los dos sentidos.
+
+### Agregado
+
+- Android: ajustes del cursor en la pantalla del trackpad (⚙): "Velocidad del
+  cursor" (0,5×–3,0×) y "Aceleración" (Off, Suave o Alta). Se guardan en el
+  teléfono y se aplican al instante.
+
 ## [1.0.0] - 2026-11-23
 
 La 1.0 cifra todo el tráfico, exige el token también para el portapapeles y
@@ -148,5 +172,6 @@ Primera pre-release con el nombre Nudge (antes Clipboard Share).
 En esta versión el portapapeles no pedía token y el tráfico iba sin cifrar;
 los dos puntos se resolvieron en la 1.0.0.
 
+[1.0.1]: https://github.com/Scag95/Nudge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Scag95/Nudge/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/Scag95/Nudge/releases/tag/v0.1.0

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -12,6 +13,14 @@ import (
 
 // DefaultInputRate is the per-connection event budget when none is given.
 const DefaultInputRate = 120
+
+// DefaultMoveRate is the per-connection budget for `move` events alone: a
+// 120 Hz touch panel (or several coalesced sources) must never trip the strict
+// bucket above. Moves over it are dropped silently.
+const DefaultMoveRate = 1000
+
+// moveDropLogEvery throttles the log line for silently dropped moves.
+const moveDropLogEvery = 1000
 
 // maxInputFrameBytes bounds one protocol message; larger frames are dropped
 // by the connection and never parsed or injected.
@@ -33,10 +42,21 @@ var inputUpgrader = websocket.Upgrader{
 // eventsPerSecond; violations answer {"error":"..."} frames and are never
 // injected. eventsPerSecond <= 0 selects DefaultInputRate.
 func AttachInputWS(r *mux.Router, v TokenValidator, inj input.Injector, eventsPerSecond int) {
+	AttachInputWSLimits(r, v, inj, eventsPerSecond, DefaultMoveRate)
+}
+
+// AttachInputWSLimits is AttachInputWS with an explicit budget for `move`
+// events. Moves have their own, higher bucket and are dropped silently when
+// it is empty; every other event kind (and every invalid frame) uses the
+// eventsPerSecond bucket and answers an error frame when over it.
+func AttachInputWSLimits(r *mux.Router, v TokenValidator, inj input.Injector, eventsPerSecond, movesPerSecond int) {
 	if eventsPerSecond <= 0 {
 		eventsPerSecond = DefaultInputRate
 	}
-	h := &inputHandlers{validator: v, injector: inj, rate: eventsPerSecond}
+	if movesPerSecond <= 0 {
+		movesPerSecond = DefaultMoveRate
+	}
+	h := &inputHandlers{validator: v, injector: inj, rate: eventsPerSecond, moveRate: movesPerSecond}
 	r.HandleFunc("/ws/input", h.serve)
 }
 
@@ -44,6 +64,7 @@ type inputHandlers struct {
 	validator TokenValidator
 	injector  input.Injector
 	rate      int
+	moveRate  int
 }
 
 func (h *inputHandlers) serve(w http.ResponseWriter, r *http.Request) {
@@ -58,19 +79,36 @@ func (h *inputHandlers) serve(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	conn.SetReadLimit(maxInputFrameBytes)
 
-	bucket := newBucket(h.rate, time.Now())
+	// Two budgets per connection: `move` has its own generous one (a touch
+	// panel at 120 Hz or more produces them continuously and a dropped move
+	// only costs a few pixels), everything else keeps the strict one.
+	// The kind is taken from the parsed event, never from the raw bytes, so a
+	// frame cannot pick the cheaper bucket by lying about its type. Frames are
+	// already bounded by the read limit; invalid ones are charged to the
+	// strict bucket and answered, exactly as before.
+	strict := newBucket(h.rate, time.Now())
+	moves := newBucket(h.moveRate, time.Now())
+	droppedMoves := 0
 	for {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			return // client gone or frame over the read limit
 		}
-		if !bucket.allow(time.Now()) {
+		cmd, perr := input.Parse(data)
+		if _, isMove := cmd.(input.Move); perr == nil && isMove {
+			if !moves.allow(time.Now()) {
+				droppedMoves++
+				if droppedMoves%moveDropLogEvery == 1 {
+					log.Printf("input: dropped %d move events over %d/s so far", droppedMoves, h.moveRate)
+				}
+				continue
+			}
+		} else if !strict.allow(time.Now()) {
 			h.writeError(conn, "rate limit exceeded")
 			continue
 		}
-		cmd, err := input.Parse(data)
-		if err != nil {
-			h.writeError(conn, err.Error())
+		if perr != nil {
+			h.writeError(conn, perr.Error())
 			continue
 		}
 		if err := cmd.Run(h.injector); err != nil {

@@ -131,7 +131,7 @@ token como `?token=`.
 
 El servidor declara la versión del protocolo en una sola constante
 (`api.ProtocolVersion` en `internal/api`, hoy `1`) y la versión del servidor
-en otra (`Version` en `cmd/server/version.go`, hoy `"1.0.0"`; de ahí la toma
+en otra (`Version` en `cmd/server/version.go`, hoy `"1.0.1"`; de ahí la toma
 `scripts/build-windows.sh` para el nombre del zip). `protocol` viaja en
 `/health`, en las respuestas de `/pair/request` y `/pair/status`, y en el
 registro TXT del anuncio mDNS (`protocol=1`, que reemplaza a `version=1`).
@@ -168,7 +168,12 @@ envían como objetos JSON, uno por frame:
 ```
 
 Un evento inválido o fuera de rango responde `{"error": "..."}` y **no se
-inyecta**; la conexión sigue abierta. Máximo 120 eventos/s por conexión.
+inyecta**; la conexión sigue abierta. Límites por conexión: los `move` tienen
+su propio tope de 1000 eventos/s y, pasado ese tope, se descartan en silencio
+(sin `error`: perder unos píxeles no importa). Todo lo demás (clics, scroll,
+teclas, texto) y los frames inválidos tienen un máximo de 120 eventos/s y,
+al pasarse, responden `{"error": "rate limit exceeded"}`. El protocolo no
+cambió: la app 1.0.x y el servidor 1.0.x siguen siendo compatibles.
 
 ## Emparejamiento por dentro
 

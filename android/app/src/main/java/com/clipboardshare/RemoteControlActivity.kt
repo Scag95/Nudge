@@ -16,6 +16,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -41,6 +42,12 @@ class RemoteControlActivity : AppCompatActivity() {
     }
 
     private val client = InputClient()
+
+    /** One `move` per display frame; every other event flushes pending motion first. */
+    private val moves = MoveCoalescer(ChoreographerFrames()) { dx, dy -> client.sendMove(dx, dy) }
+    private val pointerPrefs by lazy { getSharedPreferences("pointer_settings", Context.MODE_PRIVATE) }
+    private lateinit var cursorPanel: View
+    private lateinit var accelButtons: Map<PointerMotion.Acceleration, Button>
     private val handler = Handler(Looper.getMainLooper())
     private val clipboardStatusHandler = Handler(Looper.getMainLooper())
     private lateinit var store: SessionStore
@@ -143,8 +150,14 @@ class RemoteControlActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.rcHost).text =
             store.getLastHosts().firstOrNull { SessionStore.hostKey(it.host, it.port) == hostKey }?.name
                 ?: hostKey
+        cursorPanel = findViewById(R.id.cursorPanel)
         statusBadge.setOnClickListener {
+            cursorPanel.visibility = View.GONE
             connPanel.visibility = if (connPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
+        findViewById<View>(R.id.btnCursorSettings).setOnClickListener {
+            connPanel.visibility = View.GONE
+            cursorPanel.visibility = if (cursorPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
         }
         val moreShortcuts = findViewById<View>(R.id.moreShortcuts)
         val moreButton = findViewById<Button>(R.id.btnMoreShortcuts)
@@ -155,8 +168,17 @@ class RemoteControlActivity : AppCompatActivity() {
         }
         keyboard = findViewById(R.id.remoteKeyboard)
         keyboard.sink = object : KeyboardTranslator.Sink {
-            override fun text(chars: String) = sendOrWarn(client.sendText(chars))
-            override fun key(name: String) = sendOrWarn(client.sendKey(name))
+            override fun text(chars: String): Boolean {
+                var sent = false
+                moves.flushThen { sent = sendOrWarn(client.sendText(chars)) }
+                return sent
+            }
+
+            override fun key(name: String): Boolean {
+                var sent = false
+                moves.flushThen { sent = sendOrWarn(client.sendKey(name)) }
+                return sent
+            }
         }
         val typedCard = findViewById<TextView>(R.id.typedCard)
         keyboard.onPhraseChanged = { phrase -> showTypedPhrase(typedCard, phrase) }
@@ -171,12 +193,14 @@ class RemoteControlActivity : AppCompatActivity() {
             clipPrefs.edit().putBoolean("share_images", checked).apply()
         }
 
-        findViewById<TouchpadView>(R.id.touchpad).listener = object : TouchpadView.Listener {
-            override fun onMove(dx: Int, dy: Int) { client.sendMove(dx, dy) }
-            override fun onLeftTap() { client.sendClick("left", "tap") }
-            override fun onRightTap() { client.sendClick("right", "tap") }
+        val touchpad = findViewById<TouchpadView>(R.id.touchpad)
+        setUpCursorSettings(touchpad.motion)
+        touchpad.listener = object : TouchpadView.Listener {
+            override fun onMove(dx: Int, dy: Int) { moves.add(dx, dy) }
+            override fun onLeftTap() { moves.flushThen { client.sendClick("left", "tap") } }
+            override fun onRightTap() { moves.flushThen { client.sendClick("right", "tap") } }
             override fun onScroll(dxNotches: Int, dyNotches: Int) {
-                client.sendScroll(dxNotches, dyNotches)
+                moves.flushThen { client.sendScroll(dxNotches, dyNotches) }
             }
         }
 
@@ -246,6 +270,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         manualDisconnect = true
+        moves.cancel()
         pairingJob?.cancel()
         handler.removeCallbacksAndMessages(null)
         clipboardStatusHandler.removeCallbacksAndMessages(null)
@@ -318,8 +343,51 @@ class RemoteControlActivity : AppCompatActivity() {
         return sent
     }
 
+    /** Every button (clicks, shortcuts) sends pending pointer motion first to keep the order. */
     private fun bind(id: Int, action: () -> Unit) {
-        findViewById<Button>(id).setOnClickListener { action() }
+        findViewById<Button>(id).setOnClickListener { moves.flushThen(action) }
+    }
+
+    /** Restores the saved speed/acceleration and applies changes live (and saves them). */
+    private fun setUpCursorSettings(motion: PointerMotion) {
+        motion.speed = pointerPrefs.getFloat("speed", PointerMotion.DEFAULT_SPEED.toFloat()).toDouble()
+        motion.acceleration = PointerMotion.Acceleration.fromName(pointerPrefs.getString("accel", null))
+        val value = findViewById<TextView>(R.id.cursorSpeedValue)
+        val seek = findViewById<SeekBar>(R.id.cursorSpeedSeek)
+        seek.max = PointerMotion.SPEED_STEPS
+        fun showSpeed() { value.text = String.format(java.util.Locale.US, "%.1f×", motion.speed) }
+        seek.progress = PointerMotion.progressFromSpeed(motion.speed)
+        showSpeed()
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                motion.speed = PointerMotion.speedFromProgress(progress)
+                showSpeed()
+                if (fromUser) pointerPrefs.edit().putFloat("speed", motion.speed.toFloat()).apply()
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar) = Unit
+            override fun onStopTrackingTouch(bar: SeekBar) = Unit
+        })
+        accelButtons = mapOf(
+            PointerMotion.Acceleration.OFF to findViewById<Button>(R.id.btnAccelOff),
+            PointerMotion.Acceleration.SUAVE to findViewById<Button>(R.id.btnAccelSuave),
+            PointerMotion.Acceleration.ALTA to findViewById<Button>(R.id.btnAccelAlta),
+        )
+        fun showAccel() {
+            accelButtons.forEach { (accel, button) ->
+                button.setBackgroundResource(
+                    if (accel == motion.acceleration) R.drawable.bg_btn_accent else R.drawable.bg_btn
+                )
+            }
+        }
+        accelButtons.forEach { (accel, button) ->
+            button.setOnClickListener {
+                motion.acceleration = accel
+                pointerPrefs.edit().putString("accel", accel.name).apply()
+                showAccel()
+            }
+        }
+        showAccel()
     }
 
     /** Automatic connection using only the persisted token for the selected host. */

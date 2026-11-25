@@ -29,6 +29,12 @@ class TouchpadView @JvmOverloads constructor(
 
     var listener: Listener? = null
 
+    /**
+     * Maps finger deltas to whole-pixel moves (speed, acceleration, sub-pixel carry).
+     * Owned here so its remainder is cleared with every gesture; settings are applied live.
+     */
+    val motion = PointerMotion()
+
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private val notchPx = 36f * resources.displayMetrics.density
     private val longPressMs = 600L
@@ -72,6 +78,7 @@ class TouchpadView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                motion.reset()
                 primaryId = event.getPointerId(0)
                 lastX = event.x
                 lastY = event.y
@@ -90,6 +97,7 @@ class TouchpadView @JvmOverloads constructor(
 
             MotionEvent.ACTION_POINTER_DOWN -> {
                 activeCount = event.pointerCount
+                motion.reset()
                 if (activeCount >= 2) {
                     edgeScroll = false
                     twoFinger = true
@@ -141,7 +149,8 @@ class TouchpadView @JvmOverloads constructor(
                         return true
                     }
                     if (dx != 0f || dy != 0f) {
-                        listener?.onMove(dx.toInt(), dy.toInt())
+                        // Fractions are carried by the mapper; (0, 0) is never sent.
+                        motion.map(dx, dy, event.eventTime)?.let { listener?.onMove(it.dx, it.dy) }
                         // One finger still moving after a two-finger gesture is
                         // not a stationary two-finger tap.
                         if (gestureWasTwo) twoFingerMove += abs(dx) + abs(dy)
@@ -153,6 +162,7 @@ class TouchpadView @JvmOverloads constructor(
 
             MotionEvent.ACTION_POINTER_UP -> {
                 activeCount = event.pointerCount - 1
+                motion.reset()
                 if (activeCount < 2) {
                     twoFinger = false
                     val remIdx = if (event.actionIndex == 0) 1 else 0
@@ -222,6 +232,7 @@ class TouchpadView @JvmOverloads constructor(
     }
 
     private fun resetState() {
+        motion.reset()
         edgeScroll = false
         activeCount = 0
         twoFinger = false

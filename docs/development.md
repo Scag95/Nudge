@@ -168,7 +168,12 @@ envían como objetos JSON, uno por frame:
 ```
 
 Un evento inválido o fuera de rango responde `{"error": "..."}` y **no se
-inyecta**; la conexión sigue abierta. Máximo 120 eventos/s por conexión.
+inyecta**; la conexión sigue abierta. Límites por conexión: los `move` tienen
+su propio tope de 1000 eventos/s y, pasado ese tope, se descartan en silencio
+(sin `error`: perder unos píxeles no importa). Todo lo demás (clics, scroll,
+teclas, texto) y los frames inválidos tienen un máximo de 120 eventos/s y,
+al pasarse, responden `{"error": "rate limit exceeded"}`. El protocolo no
+cambió: la app 1.0.x y el servidor 1.0.x siguen siendo compatibles.
 
 ## Emparejamiento por dentro
 

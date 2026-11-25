@@ -4,7 +4,7 @@ Los cambios de cada versión de Nudge. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones,
 [Semantic Versioning](https://semver.org/lang/es/).
 
-## [Unreleased]
+## [1.0.1] - 2026-11-25
 
 ### Cambiado
 
@@ -172,5 +172,6 @@ Primera pre-release con el nombre Nudge (antes Clipboard Share).
 En esta versión el portapapeles no pedía token y el tráfico iba sin cifrar;
 los dos puntos se resolvieron en la 1.0.0.
 
+[1.0.1]: https://github.com/Scag95/Nudge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Scag95/Nudge/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/Scag95/Nudge/releases/tag/v0.1.0

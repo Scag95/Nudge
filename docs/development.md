@@ -131,7 +131,7 @@ token como `?token=`.
 
 El servidor declara la versión del protocolo en una sola constante
 (`api.ProtocolVersion` en `internal/api`, hoy `1`) y la versión del servidor
-en otra (`Version` en `cmd/server/version.go`, hoy `"1.0.0"`; de ahí la toma
+en otra (`Version` en `cmd/server/version.go`, hoy `"1.0.1"`; de ahí la toma
 `scripts/build-windows.sh` para el nombre del zip). `protocol` viaja en
 `/health`, en las respuestas de `/pair/request` y `/pair/status`, y en el
 registro TXT del anuncio mDNS (`protocol=1`, que reemplaza a `version=1`).

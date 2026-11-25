@@ -1,6 +1,6 @@
 # Maintainer: Nudge contributors
 pkgname=nudge
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc='Share the clipboard and remote input between phones and a Linux desktop'
 arch=('x86_64')
